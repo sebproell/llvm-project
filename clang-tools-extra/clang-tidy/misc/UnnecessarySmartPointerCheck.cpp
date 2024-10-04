@@ -28,37 +28,76 @@ void UnnecessarySmartPointerCheck::check(
   // FIXME: Add callback implementation.
   const auto *MatchedDecl = Result.Nodes.getNodeAs<VarDecl>("x");
 
-  // Get the parent scope if available.
-  // Traverse upwards until we find a CompoundStmt.
   const auto *ParentScope = MatchedDecl->getParentFunctionOrMethod();
   if (!ParentScope)
     return;
-
-  diag(MatchedDecl->getBeginLoc(), "looking at this parent_scope");
 
   // cast to a Decl
   const auto *ParentScopeDecl = dyn_cast<Decl>(ParentScope);
   if (!ParentScopeDecl)
     return;
 
-  diag(ParentScopeDecl->getBeginLoc(), "looking at this parent_scope",
-       DiagnosticIDs::Note);
-
   const auto *Body = ParentScopeDecl->getBody();
   if (!Body)
     return;
 
-  diag(Body->getBeginLoc(), "looking at this body", DiagnosticIDs::Note);
+  std::vector<BoundNodes> fixable_usages;
 
   for (const auto &stmt : Body->children()) {
-    if (stmt == (const Stmt *)MatchedDecl)
-      continue;
-    diag(stmt->getBeginLoc(), "looking at this stmt", DiagnosticIDs::Note);
-    const auto &usages =
+    auto OverloadedOperatorDereference =
+        cxxOperatorCallExpr(
+            hasOverloadedOperatorName("*"),
+            has(declRefExpr(to(equalsNode(MatchedDecl))).bind("usage")))
+            .bind("operator*");
+
+    auto GetFunction =
+        cxxMemberCallExpr(
+            callee(cxxMethodDecl(hasName("get"))),
+            on(declRefExpr(to(equalsNode(MatchedDecl))).bind("usage")))
+            .bind("get");
+
+    const auto &dereference_usages =
+        match(findAll(expr(anyOf(OverloadedOperatorDereference, GetFunction))),
+              *stmt, *Result.Context);
+
+    const auto &all_usages =
         match(findAll(declRefExpr(to(equalsNode(MatchedDecl))).bind("usage")),
               *stmt, *Result.Context);
-    for (const auto &usage : usages) {
-      diag(usage.getNodeAs<DeclRefExpr>("usage")->getLocation(), "used here");
+
+    if (all_usages.size() > dereference_usages.size()) {
+      // There are some usages that do not dereference, so this match is not
+      // relevant
+      return;
+    } else if (all_usages.size() == dereference_usages.size()) {
+      // All usages are dereferences, so we can suggest replacing the smart
+      // pointer with a value.
+      fixable_usages.insert(fixable_usages.end(), dereference_usages.begin(),
+                            dereference_usages.end());
+
+    } else {
+      // This is an implementation error.
+      continue;
+    }
+  }
+  // If we get here, there is no usage of the smart pointer that is not a
+  // dereference, so we can suggest replacing the smart pointer with a value.
+  diag(MatchedDecl->getBeginLoc(), "this smart pointer is unnecessary",
+       DiagnosticIDs::Warning);
+
+  for (const auto &deref : fixable_usages) {
+    if (deref.getNodeAs<CXXOperatorCallExpr>("operator*")) {
+      diag(deref.getNodeAs<CXXOperatorCallExpr>("operator*")->getBeginLoc(),
+           "dereferenced here", DiagnosticIDs::Note)
+          << FixItHint::CreateReplacement(
+                 deref.getNodeAs<CXXOperatorCallExpr>("operator*")
+                     ->getSourceRange(),
+                 "");
+    } else if (deref.getNodeAs<CXXMemberCallExpr>("get")) {
+      diag(deref.getNodeAs<CXXMemberCallExpr>("get")->getBeginLoc(),
+           "used as raw pointer here", DiagnosticIDs::Note)
+          << FixItHint::CreateReplacement(
+                 deref.getNodeAs<CXXMemberCallExpr>("get")->getSourceRange(),
+                 "");
     }
   }
 }
