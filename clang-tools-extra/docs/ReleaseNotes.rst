@@ -115,6 +115,11 @@ New checks
   Gives warnings for tagged unions, where the number of tags is
   different from the number of data members inside the union.
 
+- New :doc:`misc-unnecessary-smart-pointer
+  <clang-tidy/checks/misc/unnecessary-smart-pointer>` check.
+
+  FIXME: Write a short description.
+
 New check aliases
 ^^^^^^^^^^^^^^^^^
 

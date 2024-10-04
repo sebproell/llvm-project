@@ -266,6 +266,7 @@ Clang-Tidy Checks
    :doc:`misc-throw-by-value-catch-by-reference <misc/throw-by-value-catch-by-reference>`,
    :doc:`misc-unconventional-assign-operator <misc/unconventional-assign-operator>`,
    :doc:`misc-uniqueptr-reset-release <misc/uniqueptr-reset-release>`, "Yes"
+   :doc:`misc-unnecessary-smart-pointer <misc/unnecessary-smart-pointer>`, "Yes"
    :doc:`misc-unused-alias-decls <misc/unused-alias-decls>`, "Yes"
    :doc:`misc-unused-parameters <misc/unused-parameters>`, "Yes"
    :doc:`misc-unused-using-decls <misc/unused-using-decls>`, "Yes"

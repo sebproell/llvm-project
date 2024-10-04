@@ -27,6 +27,7 @@
 #include "ThrowByValueCatchByReferenceCheck.h"
 #include "UnconventionalAssignOperatorCheck.h"
 #include "UniqueptrResetReleaseCheck.h"
+#include "UnnecessarySmartPointerCheck.h"
 #include "UnusedAliasDeclsCheck.h"
 #include "UnusedParametersCheck.h"
 #include "UnusedUsingDeclsCheck.h"
@@ -71,6 +72,8 @@ public:
         "misc-unconventional-assign-operator");
     CheckFactories.registerCheck<UniqueptrResetReleaseCheck>(
         "misc-uniqueptr-reset-release");
+    CheckFactories.registerCheck<UnnecessarySmartPointerCheck>(
+        "misc-unnecessary-smart-pointer");
     CheckFactories.registerCheck<UnusedAliasDeclsCheck>(
         "misc-unused-alias-decls");
     CheckFactories.registerCheck<UnusedParametersCheck>(
