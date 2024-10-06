@@ -19,8 +19,8 @@ namespace clang::tidy::misc {
 /// http://clang.llvm.org/extra/clang-tidy/checks/misc/unnecessary-smart-pointer.html
 class UnnecessarySmartPointerCheck : public ClangTidyCheck {
 public:
-  UnnecessarySmartPointerCheck(StringRef Name, ClangTidyContext *Context)
-      : ClangTidyCheck(Name, Context) {}
+  UnnecessarySmartPointerCheck(StringRef Name, ClangTidyContext *Context);
+
   void registerMatchers(ast_matchers::MatchFinder *Finder) override;
   void check(const ast_matchers::MatchFinder::MatchResult &Result) override;
   bool isLanguageVersionSupported(const LangOptions &LangOpts) const override {
@@ -29,7 +29,7 @@ public:
   void storeOptions(ClangTidyOptions::OptionMap &Opts) override;
 
 private:
-  const std::vector<StringRef> SmartPointerTypes{"shared_ptr"};
+  const std::vector<StringRef> SmartPointerTypes;
 };
 
 } // namespace clang::tidy::misc

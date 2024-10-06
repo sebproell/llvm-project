@@ -15,6 +15,12 @@ using namespace clang::ast_matchers;
 
 namespace clang::tidy::misc {
 
+UnnecessarySmartPointerCheck::UnnecessarySmartPointerCheck(
+    StringRef Name, ClangTidyContext *Context)
+    : ClangTidyCheck(Name, Context),
+      SmartPointerTypes(utils::options::parseStringList(
+          Options.get("SmartPointerTypes", "shared_ptr;unique_ptr"))) {}
+
 void UnnecessarySmartPointerCheck::registerMatchers(MatchFinder *Finder) {
   Finder->addMatcher(
       varDecl(hasType(cxxRecordDecl(
@@ -41,42 +47,43 @@ void UnnecessarySmartPointerCheck::check(
   if (!Body)
     return;
 
-  std::vector<BoundNodes> fixable_usages;
+  auto OverloadedOperator = [&MatchedDecl](StringRef Name) {
+    auto RefersToVarDecl =
+        has(declRefExpr(to(equalsNode(MatchedDecl))).bind("usage"));
 
-  for (const auto &stmt : Body->children()) {
-    auto OverloadedOperatorDereference =
-        cxxOperatorCallExpr(
-            hasOverloadedOperatorName("*"),
-            has(declRefExpr(to(equalsNode(MatchedDecl))).bind("usage")))
-            .bind("operator*");
+    // operator-> is not obtainable via hasOperatorName("->") so we check for
+    // the method name
+    return cxxOperatorCallExpr(
+        has(declRefExpr(to(cxxMethodDecl(hasName(Name)))).bind(Name)),
+        RefersToVarDecl);
+  };
 
-    auto GetFunction =
-        cxxMemberCallExpr(
-            callee(cxxMethodDecl(hasName("get"))),
-            on(declRefExpr(to(equalsNode(MatchedDecl))).bind("usage")))
-            .bind("get");
+  std::vector<BoundNodes> FixableUsages;
 
-    const auto &dereference_usages =
-        match(findAll(expr(anyOf(OverloadedOperatorDereference, GetFunction))),
-              *stmt, *Result.Context);
+  for (const auto &Stmt : Body->children()) {
+    const auto &UsagesWithDereference =
+        match(traverse(TK_IgnoreUnlessSpelledInSource,
+                       findAll(expr(anyOf(OverloadedOperator("operator*"),
+                                          OverloadedOperator("operator->"))))),
+              *Stmt, *Result.Context);
 
-    const auto &all_usages =
-        match(findAll(declRefExpr(to(equalsNode(MatchedDecl))).bind("usage")),
-              *stmt, *Result.Context);
+    const auto &Usages = match(
+        traverse(
+            TK_IgnoreUnlessSpelledInSource,
+            findAll(declRefExpr(to(equalsNode(MatchedDecl))).bind("usage"))),
+        *Stmt, *Result.Context);
 
-    if (all_usages.size() > dereference_usages.size()) {
+    if (Usages.size() > UsagesWithDereference.size()) {
       // There are some usages that do not dereference, so this match is not
       // relevant
+
       return;
-    } else if (all_usages.size() == dereference_usages.size()) {
+    }
+    if (Usages.size() == UsagesWithDereference.size()) {
       // All usages are dereferences, so we can suggest replacing the smart
       // pointer with a value.
-      fixable_usages.insert(fixable_usages.end(), dereference_usages.begin(),
-                            dereference_usages.end());
-
-    } else {
-      // This is an implementation error.
-      continue;
+      FixableUsages.insert(FixableUsages.end(), UsagesWithDereference.begin(),
+                           UsagesWithDereference.end());
     }
   }
   // If we get here, there is no usage of the smart pointer that is not a
@@ -84,27 +91,22 @@ void UnnecessarySmartPointerCheck::check(
   diag(MatchedDecl->getBeginLoc(), "this smart pointer is unnecessary",
        DiagnosticIDs::Warning);
 
-  for (const auto &deref : fixable_usages) {
-    if (deref.getNodeAs<CXXOperatorCallExpr>("operator*")) {
-      diag(deref.getNodeAs<CXXOperatorCallExpr>("operator*")->getBeginLoc(),
-           "dereferenced here", DiagnosticIDs::Note)
-          << FixItHint::CreateReplacement(
-                 deref.getNodeAs<CXXOperatorCallExpr>("operator*")
-                     ->getSourceRange(),
-                 "");
-    } else if (deref.getNodeAs<CXXMemberCallExpr>("get")) {
-      diag(deref.getNodeAs<CXXMemberCallExpr>("get")->getBeginLoc(),
-           "used as raw pointer here", DiagnosticIDs::Note)
-          << FixItHint::CreateReplacement(
-                 deref.getNodeAs<CXXMemberCallExpr>("get")->getSourceRange(),
-                 "");
+  const Expr *Node = nullptr;
+  for (const auto &Deref : FixableUsages) {
+    if ((Node = Deref.getNodeAs<DeclRefExpr>("operator*"))) {
+      diag(Node->getBeginLoc(), "dereferenced here", DiagnosticIDs::Note)
+          << FixItHint::CreateReplacement(Node->getSourceRange(), "");
+    } else if ((Node = Deref.getNodeAs<DeclRefExpr>("operator->"))) {
+      diag(Node->getBeginLoc(), "dereferenced here", DiagnosticIDs::Note)
+          << FixItHint::CreateReplacement(Node->getSourceRange(), ".");
     }
   }
 }
 
 void UnnecessarySmartPointerCheck::storeOptions(
     ClangTidyOptions::OptionMap &Opts) {
-  // TODO load checks
+  Options.store(Opts, "SmartPointerTypes",
+                utils::options::serializeStringList(SmartPointerTypes));
 }
 
 } // namespace clang::tidy::misc
