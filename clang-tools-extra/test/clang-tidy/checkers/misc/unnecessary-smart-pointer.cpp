@@ -34,11 +34,19 @@ void unnecessaryInParameter(my::shared_ptr<int> a){
   int b = *a;
 }
 
+void necessaryInParameter(my::shared_ptr<int> a){
+  int b = *a;
+  auto c = a;
+  // CHECK-MESSAGES: [[@LINE-1]]:3: warning: this smart pointer is unnecessary
+
+  unnecessaryInParameter(a);
+}
+
 void necessary(){
   // This shared_ptr cannot be determined to be unnecessary since we pass it to
   // a function and call get().
   my::shared_ptr<int> a(new int(1));
-  int b = *a;
+  int b = 10 - (7 * *a);
   auto* c = a.get();
   unnecessaryInParameter(a);
 }
