@@ -39,6 +39,7 @@ void UnnecessarySmartPointerCheck::registerMatchers(MatchFinder *Finder) {
   Finder->addMatcher(
       functionDecl(hasBody(stmt()), isDefinition(), unless(isImplicit()),
                    unless(cxxMethodDecl(anyOf(isOverride(), isFinal()))),
+                   unless(cxxConstructorDecl()),
                    has(typeLoc(forEach(SmartPointerParmVarDecl))),
                    decl().bind("functionDecl")),
       this);
