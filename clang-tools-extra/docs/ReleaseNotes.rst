@@ -115,6 +115,11 @@ New checks
   Gives warnings for tagged unions, where the number of tags is
   different from the number of data members inside the union.
 
+- New :doc:`modernize-make-custom-smart-ptr
+  <clang-tidy/checks/modernize/make-custom-smart-ptr>` check.
+
+  FIXME: Write a short description.
+
 New check aliases
 ^^^^^^^^^^^^^^^^^
 

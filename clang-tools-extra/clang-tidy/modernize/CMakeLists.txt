@@ -13,6 +13,7 @@ add_clang_library(clangTidyModernizeModule
   LoopConvertCheck.cpp
   LoopConvertUtils.cpp
   MacroToEnumCheck.cpp
+  MakeCustomSmartPtrCheck.cpp
   MakeSharedCheck.cpp
   MakeSmartPtrCheck.cpp
   MakeUniqueCheck.cpp

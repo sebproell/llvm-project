@@ -16,6 +16,7 @@
 #include "DeprecatedIosBaseAliasesCheck.h"
 #include "LoopConvertCheck.h"
 #include "MacroToEnumCheck.h"
+#include "MakeCustomSmartPtrCheck.h"
 #include "MakeSharedCheck.h"
 #include "MakeUniqueCheck.h"
 #include "MinMaxUseInitializerListCheck.h"
@@ -69,6 +70,8 @@ public:
         "modernize-deprecated-ios-base-aliases");
     CheckFactories.registerCheck<LoopConvertCheck>("modernize-loop-convert");
     CheckFactories.registerCheck<MacroToEnumCheck>("modernize-macro-to-enum");
+    CheckFactories.registerCheck<MakeCustomSmartPtrCheck>(
+        "modernize-make-custom-smart-ptr");
     CheckFactories.registerCheck<MakeSharedCheck>("modernize-make-shared");
     CheckFactories.registerCheck<MakeUniqueCheck>("modernize-make-unique");
     CheckFactories.registerCheck<MinMaxUseInitializerListCheck>(

@@ -278,6 +278,7 @@ Clang-Tidy Checks
    :doc:`modernize-deprecated-ios-base-aliases <modernize/deprecated-ios-base-aliases>`, "Yes"
    :doc:`modernize-loop-convert <modernize/loop-convert>`, "Yes"
    :doc:`modernize-macro-to-enum <modernize/macro-to-enum>`, "Yes"
+   :doc:`modernize-make-custom-smart-ptr <modernize/make-custom-smart-ptr>`, "Yes"
    :doc:`modernize-make-shared <modernize/make-shared>`, "Yes"
    :doc:`modernize-make-unique <modernize/make-unique>`, "Yes"
    :doc:`modernize-min-max-use-initializer-list <modernize/min-max-use-initializer-list>`, "Yes"
