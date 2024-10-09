@@ -15,6 +15,9 @@ namespace clang::tidy::misc {
 
 /// FIXME: Write a short description.
 ///
+/// TODO: double const when replacing const ref
+/// TODO: check for default arguments that would require a ptr
+///
 /// For the user-facing documentation see:
 /// http://clang.llvm.org/extra/clang-tidy/checks/misc/unnecessary-smart-pointer.html
 class UnnecessarySmartPointerCheck : public ClangTidyCheck {
@@ -29,7 +32,14 @@ public:
   void storeOptions(ClangTidyOptions::OptionMap &Opts) override;
 
 private:
+  void checkFirstPass(const ast_matchers::MatchFinder::MatchResult &Result);
+  void checkSecondPass(const ast_matchers::MatchFinder::MatchResult &Result);
+
   const std::vector<StringRef> SmartPointerTypes;
+  const StringRef DumpDirectory;
+  const StringRef RefFile;
+  std::optional<llvm::raw_fd_stream> Stream;
+  std::unordered_map<std::string, std::vector<int>> FunctionWithArityToIndex;
 };
 
 } // namespace clang::tidy::misc
