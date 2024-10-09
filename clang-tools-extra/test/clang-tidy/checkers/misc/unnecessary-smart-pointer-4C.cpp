@@ -63,6 +63,10 @@ auto lambdaNotMatched = [](my::shared_ptr<int> a){
   int b = *a;
 };
 
+void defaultArgSkipped(my::shared_ptr<int> a = nullptr){
+  int b = *a;
+}
+
 
 void necessaryInParameter(my::shared_ptr<int> a){
   int b = *a;

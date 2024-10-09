@@ -362,6 +362,15 @@ void UnnecessarySmartPointerCheck::checkFirstPass(
       !Result.SourceManager->getFilename(Function.getLocation()).contains("4C"))
     return;
 
+  // If the parameter has a default argument in any of the expressions, ignore
+  // it.
+  for (const auto *FunctionDecl = &Function; FunctionDecl != nullptr;
+       FunctionDecl = FunctionDecl->getPreviousDecl()) {
+    const auto &CurrentParam = *FunctionDecl->getParamDecl(Index);
+    if (CurrentParam.hasDefaultArg())
+      return;
+  }
+
   // If we get here, there is no usage of the smart pointer that is not a
   // dereference, so we can suggest replacing the smart pointer with a value.
   auto Diag = diag(Param.getBeginLoc(), "this smart pointer is unnecessary",
