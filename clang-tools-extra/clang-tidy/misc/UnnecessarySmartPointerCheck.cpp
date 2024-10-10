@@ -10,6 +10,7 @@
 #include "../utils/Matchers.h"
 #include "../utils/OptionsUtils.h"
 #include "clang/ASTMatchers/ASTMatchFinder.h"
+#include <clang/Lex/Lexer.h>
 #include <fstream>
 #include <random>
 
@@ -24,6 +25,72 @@ bool isReferencedOutsideOfCallExpr(const FunctionDecl &Function,
                                    unless(hasAncestor(callExpr()))),
                        Context);
   return !Matches.empty();
+}
+
+std::optional<std::vector<BoundNodes>>
+FindUsages(const VarDecl &Param, const MatchFinder::MatchResult &Result) {
+  const auto *ParentScope = Param.getParentFunctionOrMethod();
+  if (!ParentScope)
+    return std::nullopt;
+
+  // cast to a Decl
+  const auto *ParentScopeDecl = dyn_cast<Decl>(ParentScope);
+  if (!ParentScopeDecl)
+    return std::nullopt;
+
+  const auto *Body = ParentScopeDecl->getBody();
+  if (!Body)
+    return std::nullopt;
+
+  auto RefersToVarDecl = (declRefExpr(to(equalsNode(&Param))).bind("usage"));
+
+  auto OverloadedOperator = [&](StringRef Name) {
+    // operator-> is not obtainable via hasOperatorName("->") so we check for
+    // the method name
+    return cxxOperatorCallExpr(
+        has(declRefExpr(to(cxxMethodDecl(hasName(Name)))).bind(Name)),
+        has(RefersToVarDecl));
+  };
+
+  std::vector<BoundNodes> FixableUsages;
+
+  for (const auto &Stmt : Body->children()) {
+    const auto &UsagesWithDereference =
+        match(traverse(TK_IgnoreUnlessSpelledInSource,
+                       findAll(expr(anyOf(OverloadedOperator("operator*"),
+                                          OverloadedOperator("operator->"))))),
+              *Stmt, *Result.Context);
+
+    const auto &Usages =
+        match(findAll(RefersToVarDecl), *Stmt, *Result.Context);
+
+    if (Usages.size() > UsagesWithDereference.size()) {
+      // There are some usages that do not dereference, so this match is not
+      // relevant
+
+      return std::nullopt;
+    }
+    if (Usages.size() == UsagesWithDereference.size()) {
+      // All usages are dereferences, so we can suggest replacing the smart
+      // pointer with a value.
+      FixableUsages.insert(FixableUsages.end(), UsagesWithDereference.begin(),
+                           UsagesWithDereference.end());
+    }
+  }
+  return FixableUsages;
+}
+
+void ReplaceWithDereference(const std::vector<BoundNodes> &FixableUsages,
+                            DiagnosticBuilder &Diag) {
+  // Replace all dereferences
+  const Expr *Node = nullptr;
+  for (const auto &Deref : FixableUsages) {
+    if ((Node = Deref.getNodeAs<DeclRefExpr>("operator*"))) {
+      Diag << FixItHint::CreateReplacement(Node->getSourceRange(), "");
+    } else if ((Node = Deref.getNodeAs<DeclRefExpr>("operator->"))) {
+      Diag << FixItHint::CreateReplacement(Node->getSourceRange(), ".");
+    }
+  }
 }
 
 std::string generateRandomFileName(const std::string &extension = ".json") {
@@ -202,6 +269,191 @@ auto makeMatcher(std::string FunctionName,
                     MaybeBindArg(9), MaybeBindArg(10), MaybeBindArg(11),
                     MaybeBindArg(12), MaybeBindArg(13), MaybeBindArg(14))
         .bind("call");
+  case 16:
+    return callExpr(
+               callee(functionDecl(
+                   hasName(FunctionName), CheckParmDecl(0), CheckParmDecl(1),
+                   CheckParmDecl(2), CheckParmDecl(3), CheckParmDecl(4),
+                   CheckParmDecl(5), CheckParmDecl(6), CheckParmDecl(7),
+                   CheckParmDecl(8), CheckParmDecl(9), CheckParmDecl(10),
+                   CheckParmDecl(11), CheckParmDecl(12), CheckParmDecl(13),
+                   CheckParmDecl(14), CheckParmDecl(15))),
+               MaybeBindArg(0), MaybeBindArg(1), MaybeBindArg(2),
+               MaybeBindArg(3), MaybeBindArg(4), MaybeBindArg(5),
+               MaybeBindArg(6), MaybeBindArg(7), MaybeBindArg(8),
+               MaybeBindArg(9), MaybeBindArg(10), MaybeBindArg(11),
+               MaybeBindArg(12), MaybeBindArg(13), MaybeBindArg(14),
+               MaybeBindArg(15))
+        .bind("call");
+  case 17:
+    return callExpr(
+               callee(functionDecl(
+                   hasName(FunctionName), CheckParmDecl(0), CheckParmDecl(1),
+                   CheckParmDecl(2), CheckParmDecl(3), CheckParmDecl(4),
+                   CheckParmDecl(5), CheckParmDecl(6), CheckParmDecl(7),
+                   CheckParmDecl(8), CheckParmDecl(9), CheckParmDecl(10),
+                   CheckParmDecl(11), CheckParmDecl(12), CheckParmDecl(13),
+                   CheckParmDecl(14), CheckParmDecl(15), CheckParmDecl(16))),
+               MaybeBindArg(0), MaybeBindArg(1), MaybeBindArg(2),
+               MaybeBindArg(3), MaybeBindArg(4), MaybeBindArg(5),
+               MaybeBindArg(6), MaybeBindArg(7), MaybeBindArg(8),
+               MaybeBindArg(9), MaybeBindArg(10), MaybeBindArg(11),
+               MaybeBindArg(12), MaybeBindArg(13), MaybeBindArg(14),
+               MaybeBindArg(15), MaybeBindArg(16))
+        .bind("call");
+  case 18:
+    return callExpr(callee(functionDecl(
+                        hasName(FunctionName), CheckParmDecl(0),
+                        CheckParmDecl(1), CheckParmDecl(2), CheckParmDecl(3),
+                        CheckParmDecl(4), CheckParmDecl(5), CheckParmDecl(6),
+                        CheckParmDecl(7), CheckParmDecl(8), CheckParmDecl(9),
+                        CheckParmDecl(10), CheckParmDecl(11), CheckParmDecl(12),
+                        CheckParmDecl(13), CheckParmDecl(14), CheckParmDecl(15),
+                        CheckParmDecl(16), CheckParmDecl(17))),
+                    MaybeBindArg(0), MaybeBindArg(1), MaybeBindArg(2),
+                    MaybeBindArg(3), MaybeBindArg(4), MaybeBindArg(5),
+                    MaybeBindArg(6), MaybeBindArg(7), MaybeBindArg(8),
+                    MaybeBindArg(9), MaybeBindArg(10), MaybeBindArg(11),
+                    MaybeBindArg(12), MaybeBindArg(13), MaybeBindArg(14),
+                    MaybeBindArg(15), MaybeBindArg(16), MaybeBindArg(17))
+        .bind("call");
+  case 19:
+    return callExpr(
+               callee(functionDecl(
+                   hasName(FunctionName), CheckParmDecl(0), CheckParmDecl(1),
+                   CheckParmDecl(2), CheckParmDecl(3), CheckParmDecl(4),
+                   CheckParmDecl(5), CheckParmDecl(6), CheckParmDecl(7),
+                   CheckParmDecl(8), CheckParmDecl(9), CheckParmDecl(10),
+                   CheckParmDecl(11), CheckParmDecl(12), CheckParmDecl(13),
+                   CheckParmDecl(14), CheckParmDecl(15), CheckParmDecl(16),
+                   CheckParmDecl(17), CheckParmDecl(18))),
+               MaybeBindArg(0), MaybeBindArg(1), MaybeBindArg(2),
+               MaybeBindArg(3), MaybeBindArg(4), MaybeBindArg(5),
+               MaybeBindArg(6), MaybeBindArg(7), MaybeBindArg(8),
+               MaybeBindArg(9), MaybeBindArg(10), MaybeBindArg(11),
+               MaybeBindArg(12), MaybeBindArg(13), MaybeBindArg(14),
+               MaybeBindArg(15), MaybeBindArg(16), MaybeBindArg(17),
+               MaybeBindArg(18))
+        .bind("call");
+  case 20:
+    return callExpr(
+               callee(functionDecl(
+                   hasName(FunctionName), CheckParmDecl(0), CheckParmDecl(1),
+                   CheckParmDecl(2), CheckParmDecl(3), CheckParmDecl(4),
+                   CheckParmDecl(5), CheckParmDecl(6), CheckParmDecl(7),
+                   CheckParmDecl(8), CheckParmDecl(9), CheckParmDecl(10),
+                   CheckParmDecl(11), CheckParmDecl(12), CheckParmDecl(13),
+                   CheckParmDecl(14), CheckParmDecl(15), CheckParmDecl(16),
+                   CheckParmDecl(17), CheckParmDecl(18), CheckParmDecl(19))),
+               MaybeBindArg(0), MaybeBindArg(1), MaybeBindArg(2),
+               MaybeBindArg(3), MaybeBindArg(4), MaybeBindArg(5),
+               MaybeBindArg(6), MaybeBindArg(7), MaybeBindArg(8),
+               MaybeBindArg(9), MaybeBindArg(10), MaybeBindArg(11),
+               MaybeBindArg(12), MaybeBindArg(13), MaybeBindArg(14),
+               MaybeBindArg(15), MaybeBindArg(16), MaybeBindArg(17),
+               MaybeBindArg(18), MaybeBindArg(19))
+        .bind("call");
+  case 21:
+    return callExpr(callee(functionDecl(
+                        hasName(FunctionName), CheckParmDecl(0),
+                        CheckParmDecl(1), CheckParmDecl(2), CheckParmDecl(3),
+                        CheckParmDecl(4), CheckParmDecl(5), CheckParmDecl(6),
+                        CheckParmDecl(7), CheckParmDecl(8), CheckParmDecl(9),
+                        CheckParmDecl(10), CheckParmDecl(11), CheckParmDecl(12),
+                        CheckParmDecl(13), CheckParmDecl(14), CheckParmDecl(15),
+                        CheckParmDecl(16), CheckParmDecl(17), CheckParmDecl(18),
+                        CheckParmDecl(19), CheckParmDecl(20))),
+                    MaybeBindArg(0), MaybeBindArg(1), MaybeBindArg(2),
+                    MaybeBindArg(3), MaybeBindArg(4), MaybeBindArg(5),
+                    MaybeBindArg(6), MaybeBindArg(7), MaybeBindArg(8),
+                    MaybeBindArg(9), MaybeBindArg(10), MaybeBindArg(11),
+                    MaybeBindArg(12), MaybeBindArg(13), MaybeBindArg(14),
+                    MaybeBindArg(15), MaybeBindArg(16), MaybeBindArg(17),
+                    MaybeBindArg(18), MaybeBindArg(19), MaybeBindArg(20))
+        .bind("call");
+  case 22:
+    return callExpr(
+               callee(functionDecl(
+                   hasName(FunctionName), CheckParmDecl(0), CheckParmDecl(1),
+                   CheckParmDecl(2), CheckParmDecl(3), CheckParmDecl(4),
+                   CheckParmDecl(5), CheckParmDecl(6), CheckParmDecl(7),
+                   CheckParmDecl(8), CheckParmDecl(9), CheckParmDecl(10),
+                   CheckParmDecl(11), CheckParmDecl(12), CheckParmDecl(13),
+                   CheckParmDecl(14), CheckParmDecl(15), CheckParmDecl(16),
+                   CheckParmDecl(17), CheckParmDecl(18), CheckParmDecl(19),
+                   CheckParmDecl(20), CheckParmDecl(21))),
+               MaybeBindArg(0), MaybeBindArg(1), MaybeBindArg(2),
+               MaybeBindArg(3), MaybeBindArg(4), MaybeBindArg(5),
+               MaybeBindArg(6), MaybeBindArg(7), MaybeBindArg(8),
+               MaybeBindArg(9), MaybeBindArg(10), MaybeBindArg(11),
+               MaybeBindArg(12), MaybeBindArg(13), MaybeBindArg(14),
+               MaybeBindArg(15), MaybeBindArg(16), MaybeBindArg(17),
+               MaybeBindArg(18), MaybeBindArg(19), MaybeBindArg(20),
+               MaybeBindArg(21))
+        .bind("call");
+  case 23:
+    return callExpr(
+               callee(functionDecl(
+                   hasName(FunctionName), CheckParmDecl(0), CheckParmDecl(1),
+                   CheckParmDecl(2), CheckParmDecl(3), CheckParmDecl(4),
+                   CheckParmDecl(5), CheckParmDecl(6), CheckParmDecl(7),
+                   CheckParmDecl(8), CheckParmDecl(9), CheckParmDecl(10),
+                   CheckParmDecl(11), CheckParmDecl(12), CheckParmDecl(13),
+                   CheckParmDecl(14), CheckParmDecl(15), CheckParmDecl(16),
+                   CheckParmDecl(17), CheckParmDecl(18), CheckParmDecl(19),
+                   CheckParmDecl(20), CheckParmDecl(21), CheckParmDecl(22))),
+               MaybeBindArg(0), MaybeBindArg(1), MaybeBindArg(2),
+               MaybeBindArg(3), MaybeBindArg(4), MaybeBindArg(5),
+               MaybeBindArg(6), MaybeBindArg(7), MaybeBindArg(8),
+               MaybeBindArg(9), MaybeBindArg(10), MaybeBindArg(11),
+               MaybeBindArg(12), MaybeBindArg(13), MaybeBindArg(14),
+               MaybeBindArg(15), MaybeBindArg(16), MaybeBindArg(17),
+               MaybeBindArg(18), MaybeBindArg(19), MaybeBindArg(20),
+               MaybeBindArg(21), MaybeBindArg(22))
+        .bind("call");
+  case 24:
+    return callExpr(callee(functionDecl(
+                        hasName(FunctionName), CheckParmDecl(0),
+                        CheckParmDecl(1), CheckParmDecl(2), CheckParmDecl(3),
+                        CheckParmDecl(4), CheckParmDecl(5), CheckParmDecl(6),
+                        CheckParmDecl(7), CheckParmDecl(8), CheckParmDecl(9),
+                        CheckParmDecl(10), CheckParmDecl(11), CheckParmDecl(12),
+                        CheckParmDecl(13), CheckParmDecl(14), CheckParmDecl(15),
+                        CheckParmDecl(16), CheckParmDecl(17), CheckParmDecl(18),
+                        CheckParmDecl(19), CheckParmDecl(20), CheckParmDecl(21),
+                        CheckParmDecl(22), CheckParmDecl(23))),
+                    MaybeBindArg(0), MaybeBindArg(1), MaybeBindArg(2),
+                    MaybeBindArg(3), MaybeBindArg(4), MaybeBindArg(5),
+                    MaybeBindArg(6), MaybeBindArg(7), MaybeBindArg(8),
+                    MaybeBindArg(9), MaybeBindArg(10), MaybeBindArg(11),
+                    MaybeBindArg(12), MaybeBindArg(13), MaybeBindArg(14),
+                    MaybeBindArg(15), MaybeBindArg(16), MaybeBindArg(17),
+                    MaybeBindArg(18), MaybeBindArg(19), MaybeBindArg(20),
+                    MaybeBindArg(21), MaybeBindArg(22), MaybeBindArg(23))
+        .bind("call");
+  case 25:
+    return callExpr(
+               callee(functionDecl(
+                   hasName(FunctionName), CheckParmDecl(0), CheckParmDecl(1),
+                   CheckParmDecl(2), CheckParmDecl(3), CheckParmDecl(4),
+                   CheckParmDecl(5), CheckParmDecl(6), CheckParmDecl(7),
+                   CheckParmDecl(8), CheckParmDecl(9), CheckParmDecl(10),
+                   CheckParmDecl(11), CheckParmDecl(12), CheckParmDecl(13),
+                   CheckParmDecl(14), CheckParmDecl(15), CheckParmDecl(16),
+                   CheckParmDecl(17), CheckParmDecl(18), CheckParmDecl(19),
+                   CheckParmDecl(20), CheckParmDecl(21), CheckParmDecl(22),
+                   CheckParmDecl(23), CheckParmDecl(24))),
+               MaybeBindArg(0), MaybeBindArg(1), MaybeBindArg(2),
+               MaybeBindArg(3), MaybeBindArg(4), MaybeBindArg(5),
+               MaybeBindArg(6), MaybeBindArg(7), MaybeBindArg(8),
+               MaybeBindArg(9), MaybeBindArg(10), MaybeBindArg(11),
+               MaybeBindArg(12), MaybeBindArg(13), MaybeBindArg(14),
+               MaybeBindArg(15), MaybeBindArg(16), MaybeBindArg(17),
+               MaybeBindArg(18), MaybeBindArg(19), MaybeBindArg(20),
+               MaybeBindArg(21), MaybeBindArg(22), MaybeBindArg(23),
+               MaybeBindArg(24))
+        .bind("call");
+
   default:
     llvm::errs() << "Unsupported number of parameters: " << Params.size()
                  << "\n";
@@ -217,9 +469,11 @@ UnnecessarySmartPointerCheck::UnnecessarySmartPointerCheck(
     : ClangTidyCheck(Name, Context),
       SmartPointerTypes(utils::options::parseStringList(
           Options.get("SmartPointerTypes", "shared_ptr;unique_ptr"))),
+      SmartPointerFactories(utils::options::parseStringList(
+          Options.get("SmartPointerFactories", "make_shared;make_unique"))),
       DumpDirectory(Options.get("DumpDirectory", "")),
       RefFile(Options.get("RefFile", "")) {
-  if (!DumpDirectory.empty()) {
+  if (!DumpDirectory.empty() && RefFile.empty()) {
     std::string file_name =
         (DumpDirectory + "/" + generateRandomFileName(".dump")).str();
     std::error_code errc;
@@ -274,6 +528,15 @@ void UnnecessarySmartPointerCheck::registerMatchers(MatchFinder *Finder) {
                      has(typeLoc(forEach(SmartPointerParmVarDecl))),
                      decl().bind("functionDecl")),
         this);
+
+    // Find smart pointer declarations that are create from make_rcp
+    Finder->addMatcher(
+        varDecl(traverse(TK_IgnoreUnlessSpelledInSource,
+                         has(callExpr(callee(functionDecl(
+                                          hasAnyName(SmartPointerFactories))))
+                                 .bind("smartPointerFactory"))))
+            .bind("varDecl"),
+        this);
   }
 }
 
@@ -288,56 +551,86 @@ void UnnecessarySmartPointerCheck::check(
 
 void UnnecessarySmartPointerCheck::checkFirstPass(
     const MatchFinder::MatchResult &Result) {
+  if (const auto *SmartPtrFactory =
+          Result.Nodes.getNodeAs<CallExpr>("smartPointerFactory")) {
+    checkVarDecl(Result);
+  } else {
+    checkFunctionDecl(Result);
+  }
+}
+
+void UnnecessarySmartPointerCheck::checkVarDecl(
+    const MatchFinder::MatchResult &Result) {
+  const auto &Decl = *Result.Nodes.getNodeAs<VarDecl>("varDecl");
+  const auto &Factory =
+      *Result.Nodes.getNodeAs<CallExpr>("smartPointerFactory");
+
+  const auto FixableUsages = FindUsages(Decl, Result);
+  if (!FixableUsages.has_value())
+    return;
+
+  auto Diag = diag(Decl.getBeginLoc(), "this smart pointer is unnecessary",
+                   DiagnosticIDs::Warning);
+
+  // If the declaration uses "auto", look inside the factory function for the
+  // type
+  std::string InnerType{};
+  const StringRef MaybeAuto = Lexer::getSourceText(
+      CharSourceRange::getTokenRange(Decl.getTypeSpecStartLoc(),
+                                     Decl.getTypeSpecEndLoc()),
+      *Result.SourceManager, Result.Context->getLangOpts());
+
+  // Check if MaybeAuto contains the "auto" keyword
+  if (MaybeAuto.contains("auto")) {
+    PrintingPolicy Policy = Result.Context->getPrintingPolicy();
+    Policy.adjustForCPlusPlus();
+    InnerType = Factory.getType().getCanonicalType().getAsString(Policy);
+    InnerType = InnerType.substr(InnerType.find('<') + 1);
+    InnerType = InnerType.substr(0, InnerType.rfind('>'));
+    // Strip the words "class" and "struct" from the beginning
+
+  } else {
+    // Strip of the smart pointer type
+    auto SmartPointerType = Decl.getType().getAsString();
+    InnerType = SmartPointerType.substr(SmartPointerType.find('<') + 1);
+    InnerType = InnerType.substr(0, InnerType.rfind('>'));
+  }
+
+  switch (Decl.getInitStyle()) {
+  case VarDecl::CInit: {
+    // If no args, we can also drop the parens.
+    const unsigned AdditionalOffset = (Factory.getNumArgs() == 0) ? 2 : 0;
+    Diag << FixItHint::CreateReplacement(
+        SourceRange(Decl.getLocation().getLocWithOffset(
+                        Decl.getIdentifier()->getLength()),
+                    Factory.getCallee()->getEndLoc().getLocWithOffset(
+                        AdditionalOffset)),
+        "");
+    break;
+  }
+  case VarDecl::CallInit:
+    return;
+  case VarDecl::ListInit:
+    return;
+  case VarDecl::ParenListInit:
+    return;
+  }
+
+  // Replace the LHS type
+  Diag << FixItHint::CreateReplacement(
+      SourceRange(Decl.getSourceRange().getBegin(), Decl.getTypeSpecEndLoc()),
+      InnerType);
+
+  ReplaceWithDereference(FixableUsages.value(), Diag);
+}
+
+void UnnecessarySmartPointerCheck::checkFunctionDecl(
+    const MatchFinder::MatchResult &Result) {
   const auto &Param = *Result.Nodes.getNodeAs<ParmVarDecl>("x");
 
-  const auto *ParentScope = Param.getParentFunctionOrMethod();
-  if (!ParentScope)
+  const auto FixableUsages = FindUsages(Param, Result);
+  if (!FixableUsages.has_value())
     return;
-
-  // cast to a Decl
-  const auto *ParentScopeDecl = dyn_cast<Decl>(ParentScope);
-  if (!ParentScopeDecl)
-    return;
-
-  const auto *Body = ParentScopeDecl->getBody();
-  if (!Body)
-    return;
-
-  auto RefersToVarDecl = (declRefExpr(to(equalsNode(&Param))).bind("usage"));
-
-  auto OverloadedOperator = [&](StringRef Name) {
-    // operator-> is not obtainable via hasOperatorName("->") so we check for
-    // the method name
-    return cxxOperatorCallExpr(
-        has(declRefExpr(to(cxxMethodDecl(hasName(Name)))).bind(Name)),
-        has(RefersToVarDecl));
-  };
-
-  std::vector<BoundNodes> FixableUsages;
-
-  for (const auto &Stmt : Body->children()) {
-    const auto &UsagesWithDereference =
-        match(traverse(TK_IgnoreUnlessSpelledInSource,
-                       findAll(expr(anyOf(OverloadedOperator("operator*"),
-                                          OverloadedOperator("operator->"))))),
-              *Stmt, *Result.Context);
-
-    const auto &Usages =
-        match(findAll(RefersToVarDecl), *Stmt, *Result.Context);
-
-    if (Usages.size() > UsagesWithDereference.size()) {
-      // There are some usages that do not dereference, so this match is not
-      // relevant
-
-      return;
-    }
-    if (Usages.size() == UsagesWithDereference.size()) {
-      // All usages are dereferences, so we can suggest replacing the smart
-      // pointer with a value.
-      FixableUsages.insert(FixableUsages.end(), UsagesWithDereference.begin(),
-                           UsagesWithDereference.end());
-    }
-  }
 
   const auto &Function = *Result.Nodes.getNodeAs<FunctionDecl>("functionDecl");
 
@@ -403,17 +696,7 @@ void UnnecessarySmartPointerCheck::checkFirstPass(
         InnerType);
   }
 
-  // Replace all dereferences
-  const Expr *Node = nullptr;
-  for (const auto &Deref : FixableUsages) {
-    if ((Node = Deref.getNodeAs<DeclRefExpr>("operator*"))) {
-      diag(Node->getBeginLoc(), "dereferenced here", DiagnosticIDs::Note);
-      Diag << FixItHint::CreateReplacement(Node->getSourceRange(), "");
-    } else if ((Node = Deref.getNodeAs<DeclRefExpr>("operator->"))) {
-      diag(Node->getBeginLoc(), "dereferenced here", DiagnosticIDs::Note);
-      Diag << FixItHint::CreateReplacement(Node->getSourceRange(), ".");
-    }
-  }
+  ReplaceWithDereference(FixableUsages.value(), Diag);
 }
 
 void UnnecessarySmartPointerCheck::checkSecondPass(

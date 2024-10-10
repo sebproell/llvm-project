@@ -35,7 +35,11 @@ private:
   void checkFirstPass(const ast_matchers::MatchFinder::MatchResult &Result);
   void checkSecondPass(const ast_matchers::MatchFinder::MatchResult &Result);
 
+  void checkVarDecl(const ast_matchers::MatchFinder::MatchResult &Result);
+  void checkFunctionDecl(const ast_matchers::MatchFinder::MatchResult &Result);
+
   const std::vector<StringRef> SmartPointerTypes;
+  const std::vector<StringRef> SmartPointerFactories;
   const StringRef DumpDirectory;
   const StringRef RefFile;
   std::optional<llvm::raw_fd_stream> Stream;
