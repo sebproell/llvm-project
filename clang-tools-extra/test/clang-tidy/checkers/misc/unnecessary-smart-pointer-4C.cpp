@@ -107,3 +107,19 @@ void necessaryInParameter(my::shared_ptr<int> a){
   unnecessaryInParameter(a);
 }
 
+
+class TestClass{
+
+  TestClass(my::shared_ptr<int> ca, my::shared_ptr<double> cb) : c(*ca), d(cb), e(*cb){
+// CHECK-MESSAGES: [[@LINE-1]]:1: warning: this smart pointer is unnecessary
+// CHECK-FIXES: {{^}}TestClass(int& a, my::shared_ptr<double> b) : c(a), d(b){{{$}}
+    int z = *ca;
+    int y = *cb;
+// CHECK-FIXES: {{^}}int z = a;{{$}}
+  }
+
+  int c;
+  my::shared_ptr<double> d;
+  int e;
+};
+

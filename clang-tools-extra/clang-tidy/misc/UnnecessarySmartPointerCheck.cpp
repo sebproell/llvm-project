@@ -19,95 +19,6 @@ using namespace clang::ast_matchers;
 namespace clang::tidy::misc {
 
 namespace {
-bool isReferencedOutsideOfCallExpr(const FunctionDecl &Function,
-                                   ASTContext &Context) {
-  auto Matches = match(declRefExpr(to(functionDecl(equalsNode(&Function))),
-                                   unless(hasAncestor(callExpr()))),
-                       Context);
-  return !Matches.empty();
-}
-
-std::optional<std::vector<BoundNodes>>
-FindUsages(const VarDecl &Param, const MatchFinder::MatchResult &Result) {
-  const auto *ParentScope = Param.getParentFunctionOrMethod();
-  if (!ParentScope)
-    return std::nullopt;
-
-  // cast to a Decl
-  const auto *ParentScopeDecl = dyn_cast<Decl>(ParentScope);
-  if (!ParentScopeDecl)
-    return std::nullopt;
-
-  const auto *Body = ParentScopeDecl->getBody();
-  if (!Body)
-    return std::nullopt;
-
-  auto RefersToVarDecl = (declRefExpr(to(equalsNode(&Param))).bind("usage"));
-
-  auto OverloadedOperator = [&](StringRef Name) {
-    // operator-> is not obtainable via hasOperatorName("->") so we check for
-    // the method name
-    return cxxOperatorCallExpr(
-        has(declRefExpr(to(cxxMethodDecl(hasName(Name)))).bind(Name)),
-        has(RefersToVarDecl));
-  };
-
-  std::vector<BoundNodes> FixableUsages;
-
-  for (const auto &Stmt : Body->children()) {
-    const auto &UsagesWithDereference =
-        match(traverse(TK_IgnoreUnlessSpelledInSource,
-                       findAll(expr(anyOf(OverloadedOperator("operator*"),
-                                          OverloadedOperator("operator->"))))),
-              *Stmt, *Result.Context);
-
-    const auto &Usages =
-        match(findAll(RefersToVarDecl), *Stmt, *Result.Context);
-
-    if (Usages.size() > UsagesWithDereference.size()) {
-      // There are some usages that do not dereference, so this match is not
-      // relevant
-
-      return std::nullopt;
-    }
-    if (Usages.size() == UsagesWithDereference.size()) {
-      // All usages are dereferences, so we can suggest replacing the smart
-      // pointer with a value.
-      FixableUsages.insert(FixableUsages.end(), UsagesWithDereference.begin(),
-                           UsagesWithDereference.end());
-    }
-  }
-  return FixableUsages;
-}
-
-void ReplaceWithDereference(const std::vector<BoundNodes> &FixableUsages,
-                            DiagnosticBuilder &Diag) {
-  // Replace all dereferences
-  const Expr *Node = nullptr;
-  for (const auto &Deref : FixableUsages) {
-    if ((Node = Deref.getNodeAs<DeclRefExpr>("operator*"))) {
-      Diag << FixItHint::CreateReplacement(Node->getSourceRange(), "");
-    } else if ((Node = Deref.getNodeAs<DeclRefExpr>("operator->"))) {
-      Diag << FixItHint::CreateReplacement(Node->getSourceRange(), ".");
-    }
-  }
-}
-
-std::string generateRandomFileName(const std::string &extension = ".json") {
-  const char charset[] =
-      "0123456789abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ";
-  std::random_device Rng;
-  std::uniform_int_distribution<> Dist(0, sizeof(charset) -
-                                              2); // -1 to avoid null terminator
-
-  std::string RandomString;
-  for (size_t i = 0; i < 16; ++i) {
-    RandomString += charset[Dist(Rng)];
-  }
-
-  return RandomString + extension; // Append extension
-}
-
 auto makeMatcher(std::string FunctionName,
                  const llvm::SmallVector<llvm::StringRef> &Params,
                  const llvm::SmallVector<int> &Indices) {
@@ -462,6 +373,104 @@ auto makeMatcher(std::string FunctionName,
         .bind("call");
   }
 }
+
+bool isReferencedOutsideOfCallExpr(const FunctionDecl &Function,
+                                   ASTContext &Context) {
+  auto Matches = match(declRefExpr(to(functionDecl(equalsNode(&Function))),
+                                   unless(hasAncestor(callExpr()))),
+                       Context);
+  return !Matches.empty();
+}
+
+template <typename T>
+std::optional<std::vector<BoundNodes>>
+matchesInNodeRange(llvm::iterator_range<T> Range, const VarDecl &Param,
+                   const MatchFinder::MatchResult &Result) {
+
+  auto RefersToVarDecl = (declRefExpr(to(equalsNode(&Param))).bind("usage"));
+
+  auto OverloadedOperator = [&](StringRef Name) {
+    // operator-> is not obtainable via hasOperatorName("->") so we check for
+    // the method name
+    return cxxOperatorCallExpr(
+        has(declRefExpr(to(cxxMethodDecl(hasName(Name)))).bind(Name)),
+        has(RefersToVarDecl));
+  };
+
+  std::vector<BoundNodes> FixableUsages;
+
+  for (const auto &Node : Range) {
+    const auto &UsagesWithDereference =
+        match(traverse(TK_IgnoreUnlessSpelledInSource,
+                       findAll(expr(anyOf(OverloadedOperator("operator*"),
+                                          OverloadedOperator("operator->"))))),
+              *Node, *Result.Context);
+
+    const auto &Usages =
+        match(findAll(RefersToVarDecl), *Node, *Result.Context);
+
+    if (Usages.size() > UsagesWithDereference.size()) {
+      // There are some usages that do not dereference, so this match is not
+      // relevant
+
+      return std::nullopt;
+    }
+    if (Usages.size() == UsagesWithDereference.size()) {
+      // All usages are dereferences, so we can suggest replacing the smart
+      // pointer with a value.
+      FixableUsages.insert(FixableUsages.end(), UsagesWithDereference.begin(),
+                           UsagesWithDereference.end());
+    }
+  }
+  return FixableUsages;
+}
+
+std::optional<std::vector<BoundNodes>>
+findUsages(const VarDecl &Param, const MatchFinder::MatchResult &Result) {
+  const auto *ParentScope = Param.getParentFunctionOrMethod();
+  if (!ParentScope)
+    return std::nullopt;
+
+  // cast to a Decl
+  const auto *ParentScopeDecl = dyn_cast<Decl>(ParentScope);
+  if (!ParentScopeDecl)
+    return std::nullopt;
+
+  const auto *Body = ParentScopeDecl->getBody();
+  if (!Body)
+    return std::nullopt;
+
+  return matchesInNodeRange(Body->children(), Param, Result);
+}
+
+void replaceWithDereference(const std::vector<BoundNodes> &FixableUsages,
+                            DiagnosticBuilder &Diag) {
+  // Replace all dereferences
+  const Expr *Node = nullptr;
+  for (const auto &Deref : FixableUsages) {
+    if ((Node = Deref.getNodeAs<DeclRefExpr>("operator*"))) {
+      Diag << FixItHint::CreateReplacement(Node->getSourceRange(), "");
+    } else if ((Node = Deref.getNodeAs<DeclRefExpr>("operator->"))) {
+      Diag << FixItHint::CreateReplacement(Node->getSourceRange(), ".");
+    }
+  }
+}
+
+std::string generateRandomFileName(const std::string &extension = ".json") {
+  const char charset[] =
+      "0123456789abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ";
+  std::random_device Rng;
+  std::uniform_int_distribution<> Dist(0, sizeof(charset) -
+                                              2); // -1 to avoid null terminator
+
+  std::string RandomString;
+  for (size_t i = 0; i < 16; ++i) {
+    RandomString += charset[Dist(Rng)];
+  }
+
+  return RandomString + extension; // Append extension
+}
+
 } // namespace
 
 UnnecessarySmartPointerCheck::UnnecessarySmartPointerCheck(
@@ -523,7 +532,6 @@ void UnnecessarySmartPointerCheck::registerMatchers(MatchFinder *Finder) {
     Finder->addMatcher(
         functionDecl(hasBody(stmt()), isDefinition(), unless(isImplicit()),
                      unless(cxxMethodDecl(anyOf(isOverride(), isFinal()))),
-                     unless(cxxConstructorDecl()),
                      unless(cxxMethodDecl(ofClass(isLambda()))),
                      has(typeLoc(forEach(SmartPointerParmVarDecl))),
                      decl().bind("functionDecl")),
@@ -565,7 +573,7 @@ void UnnecessarySmartPointerCheck::checkVarDecl(
   const auto &Factory =
       *Result.Nodes.getNodeAs<CallExpr>("smartPointerFactory");
 
-  const auto FixableUsages = FindUsages(Decl, Result);
+  const auto FixableUsages = findUsages(Decl, Result);
   if (!FixableUsages.has_value())
     return;
 
@@ -621,18 +629,30 @@ void UnnecessarySmartPointerCheck::checkVarDecl(
       SourceRange(Decl.getSourceRange().getBegin(), Decl.getTypeSpecEndLoc()),
       InnerType);
 
-  ReplaceWithDereference(FixableUsages.value(), Diag);
+  replaceWithDereference(FixableUsages.value(), Diag);
 }
 
 void UnnecessarySmartPointerCheck::checkFunctionDecl(
     const MatchFinder::MatchResult &Result) {
   const auto &Param = *Result.Nodes.getNodeAs<ParmVarDecl>("x");
 
-  const auto FixableUsages = FindUsages(Param, Result);
+  auto FixableUsages = findUsages(Param, Result);
   if (!FixableUsages.has_value())
     return;
 
   const auto &Function = *Result.Nodes.getNodeAs<FunctionDecl>("functionDecl");
+
+  if (auto *Constructor = dyn_cast<CXXConstructorDecl>(&Function)) {
+    return;
+    auto InitListMatches =
+        matchesInNodeRange(Constructor->inits(), Param, Result);
+    // If there are unfixable usages, we need to leave.
+    if (!InitListMatches.has_value())
+      return;
+
+    FixableUsages->insert(FixableUsages->end(), InitListMatches->begin(),
+                          InitListMatches->end());
+  }
 
   const size_t Index =
       llvm::find(Function.parameters(), &Param) - Function.parameters().begin();
@@ -696,7 +716,7 @@ void UnnecessarySmartPointerCheck::checkFunctionDecl(
         InnerType);
   }
 
-  ReplaceWithDereference(FixableUsages.value(), Diag);
+  replaceWithDereference(FixableUsages.value(), Diag);
 }
 
 void UnnecessarySmartPointerCheck::checkSecondPass(
