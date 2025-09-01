@@ -13,13 +13,22 @@
 
 namespace clang::tidy::misc {
 
-/// FIXME: Write a short description.
+/// Alpha-quality check for unnecessary smart pointer usage. Not ready to
+/// be merged to LLVM yet, since
 ///
-/// TODO: double const when replacing const ref
-/// TODO: check for default arguments that would require a ptr
+/// - hard-coded for the 4C code base 4C-multiphysics/4C (trivial fix, replace
+///   the check for 4C in the file name with some parameter
+/// - requires two passes of clang-tidy (with different settings!) to collect
+///   all references first and generate the fixit in the second pass. (hard,
+///   does not fit into the logic of clang-tidy yet)
 ///
-/// For the user-facing documentation see:
-/// http://clang.llvm.org/extra/clang-tidy/checks/misc/unnecessary-smart-pointer.html
+/// Run this check as:
+///   run-clang-tidy -p . -checks='-*,misc-unnecessary-smart-pointer' -config="{CheckOptions: {misc-unnecessary-smart-pointer.DumpDirectory: '$DUMP_DIR'}}"'
+/// Then merge the dumped files:
+///   python merge_dump_files.py /tmp/4C-dump/
+/// Run clang-tidy again with the merged dump file:
+///   run-clang-tidy -p . -checks='-*,misc-unnecessary-smart-pointer' -config="{CheckOptions: {misc-unnecessary-smart-pointer.RefFile: '$DUMP_DIR/merged.dump'}}"'
+/// 
 class UnnecessarySmartPointerCheck : public ClangTidyCheck {
 public:
   UnnecessarySmartPointerCheck(StringRef Name, ClangTidyContext *Context);
